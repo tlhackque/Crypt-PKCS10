@@ -22,7 +22,7 @@ use Encode ();
 use MIME::Base64;
 use Scalar::Util ();
 
-our $VERSION = '2.005';
+our $VERSION = '2.006';
 
 my $apiVersion = undef;  # 0 for compatibility.  1 for prefered
 my $error;
@@ -74,6 +74,9 @@ my %oids = (
     '1.2.840.10040.4.1'             => [ 'dsa', 'DSA' ],
     '1.2.840.10040.4.3'             => [ 'dsaWithSha1', 'DSA with SHA1' ],
     '1.2.840.10045.2.1'             => 'ecPublicKey',
+    '1.2.840.10045.4.1'             => 'ecdsa-with-sha1',
+    '1.2.840.10045.4.2'             => 'ecdsa-with-recommended',
+    '1.2.840.10045.4.3'             => 'ecdsa-with-sha2',
     '1.2.840.10045.4.3.1'           => 'ecdsa-with-SHA224',
     '1.2.840.10045.4.3.2'           => 'ecdsa-with-SHA256',
     '1.2.840.10045.4.3.3'           => 'ecdsa-with-SHA384',
@@ -1336,11 +1339,20 @@ sub subjectPublicKeyParams {
             return $rv;
         }
         my $key = $self->subjectPublicKey(1);
-        $key = Crypt::PK::ECC->new( \$key )->key2hash;
-        $rv->{keylen} = $key->{curve_bits};
-        $rv->{pub_x}  = $key->{pub_x};
-        $rv->{pub_y}  = $key->{pub_y};
-        $rv->{detail} = { %$key } if( $detail );
+        $key = eval { Crypt::PK::ECC->new( \$key )->key2hash };
+        if( $@ ) {
+            $rv->{keytype} = undef;
+            $self->{_error} =
+              $error =  $@;
+            croak( $error ) if( $self->{_dieOnError} );
+            return $rv;
+        }
+        if( $key ) {
+            $rv->{keylen} = $key->{curve_bits};
+            $rv->{pub_x}  = $key->{pub_x};
+            $rv->{pub_y}  = $key->{pub_y};
+            $rv->{detail} = { %$key } if( $detail );
+        }
 
         my $par = $self->_init( 'eccName' );
         $rv->{curve} = $par->decode( $self->{certificationRequestInfo}{subjectPKInfo}{algorithm}{parameters} );
